@@ -1,10 +1,11 @@
-clear all, clc, format compact, close all
+clear all,  clc, format compact, close all
 warning('off','images:initSize:adjustingMag')
+
 %% Open images 
 
-im{1} = imread('\subject4\subject4_Left\subject4_Left_1.jpg');
-im{2} = imread('\subject4\subject4_Middle\subject4_Middle_1.jpg');
-im{3} = imread('\subject4\subject4_Right\subject4_Right_1.jpg');
+im{1} = imread('subject4\subject4_Left\subject4_Left_1.jpg');
+im{2} = imread('subject4\subject4_Middle\subject4_Middle_1.jpg');
+im{3} = imread('subject4\subject4_Right\subject4_Right_1.jpg');
 
 for i = 1:length(im)
     im{i} = im2double(im{i});
@@ -65,17 +66,13 @@ imshow(stereoAnaglyph(im_mr{1},im_mr{2}));
 
 %% Disparity map
 
-disp_start = 216;
-disp_range = 40;
+disp_start = 0; %216;
+disp_range = 45; %40;
 disparity_map{1} = create_disparity(im_ml{1},im_ml{2},disp_start,disp_range,false);
+
+disp_start = -40;
+disp_range = 30;
 disparity_map{2} = create_disparity(im_mr{1},im_mr{2},disp_start,disp_range,false);
-
-
-%% Obtain unreliables
-
-for i = 1:lenth(disparity_map)
-    unreliable{i} = (disparity_map{i}==-realmax('single'));
-end
 
 %% Reconstruct face
 for i = 1:length(disparity_map)
@@ -85,23 +82,31 @@ end
 
 %% Combine both point-clouds
 
-[~,point_cloud{2}] = pcregistericp(point_cloud{2},point_cloud{1});
-point_cloud_merge = pcmerge(point_cloud{1},point_cloud{2});
+%[~,point_cloud{2},pc_rms_error] = pcregistericp(point_cloud{2},point_cloud{1},'Verbose',true);
+%point_cloud_merge = pcmerge(point_cloud{1},point_cloud{2});
 
 %% Obtain only location
  
-% for i = 1:length(point_cloud)
-%     pc_loc{i} = point_cloud{i}.Location;
-% end
+for i = 1:length(point_cloud)
+    pc_loc{i} = point_cloud{i}.Location;
+end
 
-% DIT KAN NIET WANT HET GAAT NIET OVER ZELFDE OBJECT. KAN ALLEEN OVER
-% IM(mid)
-pc_merge_loc = point_cloud_merge.Location;
+%pc_merge_loc = point_cloud_merge.Location;
+
+%% Obtain unreliables
+
+for i = 1:length(disparity_map)
+    unreliable{i} = (disparity_map{i}==-realmax('single'));
+end
+
+unreliable{1} = unreliable{1} + (pc_loc{1} == -inf) + (pc_loc{1} == inf) + (pc_loc{1}(:,:,1)>173) + (pc_loc{1}(:,:,1)<-95) + (pc_loc{1}(:,:,2)>=165) + (pc_loc{1}(:,:,2)<=-170) + (pc_loc{1}(:,:,3)>=-400);
+unreliable{2} = unreliable{2} + (pc_loc{2} == -inf) + (pc_loc{2} == inf) + (pc_loc{2}(:,:,1)>250) + (pc_loc{2}(:,:,1)<-200) + (pc_loc{2}(:,:,2)>=175) + (pc_loc{2}(:,:,2)<=-180) + (pc_loc{2}(:,:,3)>=-410);
 
 %%%% FROM HERE COPY PASTE %%%%
 
+
 %% create a connectivity structure
-[M, N] = size(disparity{i}); % get image size
+[M, N] = size(disparity_map{1}); % get image size
 res = 2; % resolution of mesh
 [nI,mI] = meshgrid(1:res:N,1:res:M); % create a 2D meshgrid of pixels, thus defining a resolution grid
 TRI = delaunay(nI(:),mI(:)); % create a triangle connectivity list
@@ -109,14 +114,15 @@ indI = sub2ind([M,N],mI(:),nI(:)); % cast grid points to linear indices
 
 %% linearize the arrays and adapt to chosen resolution
 
-pcl = reshape(pc_merge_loc,N*M,3); % reshape to (N*M)x3
-im_ml_vect = reshape(im_ml{2},[N*M,3]); % reshape to (N*M)x3
+%pcl = reshape(pc_merge_loc,N*M,3); % reshape to (N*M)x3
+pcl = reshape(pc_loc{1},N*M,3); % reshape to (N*M)x3
+im_ml_vect = reshape(im_ml{1},[N*M,3]); % reshape to (N*M)x3
 pcl = pcl(indI,:); % select 3D points that are on resolution grid
 im_ml_vect = im_ml_vect(indI,:); % select pixels that are on the resolution grid
 
 %% remove the unreliable points and the associated triangles
 
-ind_unreliable = find(unreliable{2}(indI));% get the linear indices of unreliable 3D points
+ind_unreliable = find(unreliable{1}(indI));% get the linear indices of unreliable 3D points
 imem = ismember(TRI(:),ind_unreliable); % find indices of references to unreliable points
 [ir,~] = ind2sub(size(TRI),find(imem)); % get the indices of rows with refs to unreliable points.
 TRI(ir,:) = []; % dispose them
