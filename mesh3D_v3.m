@@ -2,9 +2,9 @@ clear all, clc, format compact, close all
 warning('off','images:initSize:adjustingMag')
 %% Open images 
 
-im{1} = imread('..\..\IPCV_project3\subject4\subject4_Left\subject4_Left_1.jpg');
-im{2} = imread('..\..\IPCV_project3\subject4\subject4_Middle\subject4_Middle_1.jpg');
-im{3} = imread('..\..\IPCV_project3\subject4\subject4_Right\subject4_Right_1.jpg');
+im{1} = imread('\subject4\subject4_Left\subject4_Left_1.jpg');
+im{2} = imread('\subject4\subject4_Middle\subject4_Middle_1.jpg');
+im{3} = imread('\subject4\subject4_Right\subject4_Right_1.jpg');
 
 for i = 1:length(im)
     im{i} = im2double(im{i});
