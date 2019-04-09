@@ -11,8 +11,6 @@ for i = 1:length(im)
     im{i} = im2double(im{i});
 end
 
-im{3} = im{3}(:,150:end,:);
-
 %% Calibration camera
 
 % cameraParams{1}=Cam_calib2_left;
@@ -95,6 +93,10 @@ unreliable{2} = (disparity_map{2}==-realmax('single')) | (1-rgb2gray(im_lm{2})>0
 %unreliable{2} = unreliable{2} + (pc_loc{2} == -inf) + (pc_loc{2} == inf); %+ (pc_loc{2}(:,:,1)>250) + (pc_loc{2}(:,:,1)<-200) + (pc_loc{2}(:,:,2)>=175) + (pc_loc{2}(:,:,2)<=-180) + (pc_loc{2}(:,:,3)>=-410);
 
 
+%% Polish disparity map
+
+
+
 %% Reconstruct face
 for i = 1:length(disparity_map)
     point_cloud{i} = create_point_cloud(disparity_map{i},stereoParams{i},true);
@@ -113,11 +115,6 @@ for i = 1:length(point_cloud)
 end
 
 %pc_merge_loc = point_cloud_merge.Location;
-
-
-%% Polish disparity map
-
-
 
 %%%% FROM HERE COPY PASTE %%%%
 
