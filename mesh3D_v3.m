@@ -64,13 +64,36 @@ imshow(stereoAnaglyph(im_lm{1},im_lm{2}));
 subplot(1,2,2);
 imshow(stereoAnaglyph(im_mr{1},im_mr{2}));
 
+
+%% Filter image
+
+h = fspecial('gaussian',5,1);
+im_lm{1} = imfilter(im_lm{1},h);
+im_lm{2} = imfilter(im_lm{2},h);
+im_mr{1} = imfilter(im_mr{1},h);
+im_mr{2} = imfilter(im_mr{2},h);
+
+
 %% Disparity map
 
-disp_range = 16*[-40,-10]; %30; %40;
+disp_range = 16*[-35,-10]; %30; %40;
 disparity_map{1} = create_disparity(im_lm{2},im_lm{1},disp_range,true);
 
 disp_range = 16*[10,35];
 disparity_map{2} = create_disparity(im_mr{1},im_mr{2},disp_range,true);
+
+%% Obtain unreliables
+
+% for i = 1:length(disparity_map)
+%     %unreliable{i} = (disparity_map{i}==-realmax('single')); %+ (pc_loc{i} == -inf) + (pc_loc{i} == inf))>0; %+ (pc_loc{i}(:,:,1)>250) + (pc_loc{i}(:,:,1)<-200) + (pc_loc{i}(:,:,2)>=175) + (pc_loc{i}(:,:,2)<=-180) + (pc_loc{i}(:,:,3)>=-410))>0;
+% end
+
+unreliable{1} = (disparity_map{1}==-realmax('single')) | (1-rgb2gray(im_lm{1})>0);
+unreliable{2} = (disparity_map{2}==-realmax('single')) | (1-rgb2gray(im_lm{2})>0);
+
+%unreliable{1} = unreliable{1} + (pc_loc{1} == -inf) + (pc_loc{1} == inf); %+ (pc_loc{1}(:,:,1)>173) + (pc_loc{1}(:,:,1)<-95) + (pc_loc{1}(:,:,2)>=165) + (pc_loc{1}(:,:,2)<=-170) + (pc_loc{1}(:,:,3)>=-400);
+%unreliable{2} = unreliable{2} + (pc_loc{2} == -inf) + (pc_loc{2} == inf); %+ (pc_loc{2}(:,:,1)>250) + (pc_loc{2}(:,:,1)<-200) + (pc_loc{2}(:,:,2)>=175) + (pc_loc{2}(:,:,2)<=-180) + (pc_loc{2}(:,:,3)>=-410);
+
 
 %% Reconstruct face
 for i = 1:length(disparity_map)
@@ -91,14 +114,10 @@ end
 
 %pc_merge_loc = point_cloud_merge.Location;
 
-%% Obtain unreliables
 
-for i = 1:length(disparity_map)
-    unreliable{i} = ((disparity_map{i}==-realmax('single'))+ (pc_loc{i} == -inf) + (pc_loc{i} == inf))>0; %+ (pc_loc{i}(:,:,1)>250) + (pc_loc{i}(:,:,1)<-200) + (pc_loc{i}(:,:,2)>=175) + (pc_loc{i}(:,:,2)<=-180) + (pc_loc{i}(:,:,3)>=-410))>0;
-end
+%% Polish disparity map
 
-%unreliable{1} = unreliable{1} + (pc_loc{1} == -inf) + (pc_loc{1} == inf); %+ (pc_loc{1}(:,:,1)>173) + (pc_loc{1}(:,:,1)<-95) + (pc_loc{1}(:,:,2)>=165) + (pc_loc{1}(:,:,2)<=-170) + (pc_loc{1}(:,:,3)>=-400);
-%unreliable{2} = unreliable{2} + (pc_loc{2} == -inf) + (pc_loc{2} == inf); %+ (pc_loc{2}(:,:,1)>250) + (pc_loc{2}(:,:,1)<-200) + (pc_loc{2}(:,:,2)>=175) + (pc_loc{2}(:,:,2)<=-180) + (pc_loc{2}(:,:,3)>=-410);
+
 
 %%%% FROM HERE COPY PASTE %%%%
 
@@ -187,7 +206,16 @@ function [im_fix] = remove_background(im)
 end
 
 function [disparity_map] = create_disparity(im1,im2,disparity_range,plotting)
-    disparity_map = disparity(rgb2gray(im1),rgb2gray(im2),'DisparityRange',disparity_range);
+
+    bs = 15;        %defauld bs=15
+    cTH = 0.7;      %default 0.5
+    uTH = 15;       %default 15
+    tTH = 0.0000;   %default 0.0002 only applies if method is blockmatching
+    dTH = 15;       %default []
+
+%    disparity_map = disparity(rgb2gray(im1),rgb2gray(im2),'DisparityRange',disparity_range);
+    disparity_map = disparity(rgb2gray(im1),rgb2gray(im2),'DisparityRange',disparity_range,...
+        'ContrastThreshold',cTH, 'UniquenessThreshold',uTH, 'DistanceThreshold',dTH,'BlockSize',bs);
     if plotting == true
         figure
         imshow(disparity_map,disparity_range);
