@@ -3,23 +3,13 @@ warning('off','images:initSize:adjustingMag')
 
 %% Open images 
 
-im{1} = imread('subject4\subject4_Left\subject4_Left_1.jpg');
-im{2} = imread('subject4\subject4_Middle\subject4_Middle_1.jpg');
-im{3} = imread('subject4\subject4_Right\subject4_Right_1.jpg');
-
-for i = 1:length(im)
-    im{i} = im2double(im{i});
-end
-
-%% Calibration camera
-
-% cameraParams{1}=Cam_calib2_left;
-% cameraParams{2}=Cam_calib2_middle;
-% cameraParams{3}=Cam_calib2_right;
-
-% save camParam cameraParams
-
-% load camParam
+% im{1} = imread('subject4\subject4_Left\subject4_Left_1.jpg');
+% im{2} = imread('subject4\subject4_Middle\subject4_Middle_1.jpg');
+% im{3} = imread('subject4\subject4_Right\subject4_Right_1.jpg');
+% 
+% for i = 1:length(im)
+%     im{i} = im2double(im{i});
+% end
 
 %% determine stereoparameters
 
@@ -30,16 +20,10 @@ end
 
 load stereoParam
 
-%% Apply camera calibration to images
-
-% for ii = 1:3
-%     [im{ii},~] = undistortImage(im{ii},cameraParams{ii},'OutputView', 'same');
-% end
-
 %% Histogram matching
 
-im{1} = imhistmatch(im{1},im{2});
-im{3} = imhistmatch(im{3},im{2});
+% im{1} = imhistmatch(im{1},im{2});
+% im{3} = imhistmatch(im{3},im{2});
 
 %% Remove background
  
@@ -56,29 +40,31 @@ load im_nobg4
 [im_lm{2},im_lm{1}] = rectifyStereoImages(im{2},im{1},stereoParams{1},'OutputView','full');
 [im_mr{1},im_mr{2}] = rectifyStereoImages(im{2},im{3},stereoParams{2},'OutputView','full');
 
-figure;
-subplot(1,2,1);
-imshow(stereoAnaglyph(im_lm{1},im_lm{2}));
-subplot(1,2,2);
-imshow(stereoAnaglyph(im_mr{1},im_mr{2}));
+% figure;
+% subplot(1,2,1);
+% imshow(stereoAnaglyph(im_lm{1},im_lm{2}));
+% subplot(1,2,2);
+% imshow(stereoAnaglyph(im_mr{1},im_mr{2}));
 
 
 %% Filter image
 
-h = fspecial('gaussian',5,1);
-im_lm{1} = imfilter(im_lm{1},h);
-im_lm{2} = imfilter(im_lm{2},h);
-im_mr{1} = imfilter(im_mr{1},h);
-im_mr{2} = imfilter(im_mr{2},h);
-
+% h = fspecial('gaussian',5,1);
+% im_lm{1} = imfilter(im_lm{1},h);
+% im_lm{2} = imfilter(im_lm{2},h);
+% im_mr{1} = imfilter(im_mr{1},h);
+% im_mr{2} = imfilter(im_mr{2},h);
 
 %% Disparity map
-
-disp_range = 16*[-35,-10]; %30; %40;
+disp_range = 16*[-35,-10];
 disparity_map{1} = create_disparity(im_lm{2},im_lm{1},disp_range,true);
+%disparity_map{1} = imgaussfilt(disparity_map{1},1);
+disparity_map{1} = medfilt2(disparity_map{1},[50,50]);
 
 disp_range = 16*[10,35];
 disparity_map{2} = create_disparity(im_mr{1},im_mr{2},disp_range,true);
+%disparity_map{2} = imgaussfilt(disparity_map{2},1);
+disparity_map{2} = medfilt2(disparity_map{2},[50,50]);
 
 %% Obtain unreliables
 
@@ -86,8 +72,8 @@ disparity_map{2} = create_disparity(im_mr{1},im_mr{2},disp_range,true);
 %     %unreliable{i} = (disparity_map{i}==-realmax('single')); %+ (pc_loc{i} == -inf) + (pc_loc{i} == inf))>0; %+ (pc_loc{i}(:,:,1)>250) + (pc_loc{i}(:,:,1)<-200) + (pc_loc{i}(:,:,2)>=175) + (pc_loc{i}(:,:,2)<=-180) + (pc_loc{i}(:,:,3)>=-410))>0;
 % end
 
-unreliable{1} = (disparity_map{1}==-realmax('single')) | (1-rgb2gray(im_lm{1})>0);
-unreliable{2} = (disparity_map{2}==-realmax('single')) | (1-rgb2gray(im_lm{2})>0);
+unreliable{1} = (disparity_map{1}==-realmax('single')) | (1-(rgb2gray(im_lm{2})>0));
+unreliable{2} = (disparity_map{2}==-realmax('single')) | (1-(rgb2gray(im_mr{1})>0));
 
 %unreliable{1} = unreliable{1} + (pc_loc{1} == -inf) + (pc_loc{1} == inf); %+ (pc_loc{1}(:,:,1)>173) + (pc_loc{1}(:,:,1)<-95) + (pc_loc{1}(:,:,2)>=165) + (pc_loc{1}(:,:,2)<=-170) + (pc_loc{1}(:,:,3)>=-400);
 %unreliable{2} = unreliable{2} + (pc_loc{2} == -inf) + (pc_loc{2} == inf); %+ (pc_loc{2}(:,:,1)>250) + (pc_loc{2}(:,:,1)<-200) + (pc_loc{2}(:,:,2)>=175) + (pc_loc{2}(:,:,2)<=-180) + (pc_loc{2}(:,:,3)>=-410);
@@ -95,11 +81,16 @@ unreliable{2} = (disparity_map{2}==-realmax('single')) | (1-rgb2gray(im_lm{2})>0
 
 %% Polish disparity map
 
+for i = 1:length(disparity_map)
+    disparity_ref{i} = disparity_map{i}.*(1-unreliable{i}); 
+end
+
+figure; imshow(disparity_ref{2},disp_range) 
 
 
 %% Reconstruct face
 for i = 1:length(disparity_map)
-    point_cloud{i} = create_point_cloud(disparity_map{i},stereoParams{i},true);
+    point_cloud{i} = create_point_cloud(disparity_ref{i},stereoParams{i},true);
     %point_cloud{i} = pcdenoise(point_cloud{i});
 end
 
@@ -118,60 +109,57 @@ end
 
 %%%% FROM HERE COPY PASTE %%%%
 
+% 
+% %% create a connectivity structure
+% [M, N] = size(disparity_map{2}); % get image size
+% res = 2; % resolution of mesh
+% [nI,mI] = meshgrid(1:res:N,1:res:M); % create a 2D meshgrid of pixels, thus defining a resolution grid
+% TRI = delaunay(nI(:),mI(:)); % create a triangle connectivity list
+% indI = sub2ind([M,N],mI(:),nI(:)); % cast grid points to linear indices
+% 
+% %% linearize the arrays and adapt to chosen resolution
+% 
+% %pcl = reshape(pc_merge_loc,N*M,3); % reshape to (N*M)x3
+% pcl = reshape(pc_loc{2},N*M,3); % reshape to (N*M)x3
+% im_ml_vect = reshape(im_mr{1},[N*M,3]); % reshape to (N*M)x3
+% pcl = pcl(indI,:); % select 3D points that are on resolution grid
+% im_ml_vect = im_ml_vect(indI,:); % select pixels that are on the resolution grid
+% 
+% %% remove the unreliable points and the associated triangles
+% 
+% ind_unreliable = find(unreliable{2}(indI));% get the linear indices of unreliable 3D points
+% imem = ismember(TRI(:),ind_unreliable); % find indices of references to unreliable points
+% [ir,~] = ind2sub(size(TRI),find(imem)); % get the indices of rows with refs to unreliable points.
+% TRI(ir,:) = []; % dispose them
+% iused = unique(TRI(:)); % find the ind's of vertices that are in use
+% used = zeros(length(pcl),1); % pre-allocate
+% used(iused) = 1; % create a map of used vertices
+% map2used = cumsum(used); % conversion table from indices of old vertices to the new one
+% pcl = pcl(iused,:); % remove the unused vertices
+% im_ml_vect = im_ml_vect(iused,:);
+% TRI = map2used(TRI); % update the ind's of vertices
+% 
+% %% create the 3D mesh
+% 
+% TR = triangulation(TRI,double(pcl)); % create the object
+% 
+% %% visualize
+% figure(5), clf(5), hold on
+% TM = trimesh(TR); % plot the mesh
+% set(TM,'FaceVertexCData',im_ml_vect); % set colors to input image
+% set(TM,'Facecolor','interp');
+% % set(TM,'FaceColor','red'); % if you want a colored surface
+% set(TM,'EdgeColor','none'); % suppress the edges
+% xlabel('x (mm)')
+% ylabel('y (mm)')
+% zlabel('z (mm)')
+% axis([-250 250 -250 250 400 900])
+% set(gca,'xdir','reverse')
+% set(gca,'zdir','reverse')
+% daspect([1,1,1])
+% axis tight
+% %view([0,90]);
 
-%% create a connectivity structure
-[M, N] = size(disparity_map{2}); % get image size
-res = 2; % resolution of mesh
-[nI,mI] = meshgrid(1:res:N,1:res:M); % create a 2D meshgrid of pixels, thus defining a resolution grid
-TRI = delaunay(nI(:),mI(:)); % create a triangle connectivity list
-indI = sub2ind([M,N],mI(:),nI(:)); % cast grid points to linear indices
-
-%% linearize the arrays and adapt to chosen resolution
-
-%pcl = reshape(pc_merge_loc,N*M,3); % reshape to (N*M)x3
-pcl = reshape(pc_loc{2},N*M,3); % reshape to (N*M)x3
-im_ml_vect = reshape(im_mr{1},[N*M,3]); % reshape to (N*M)x3
-pcl = pcl(indI,:); % select 3D points that are on resolution grid
-im_ml_vect = im_ml_vect(indI,:); % select pixels that are on the resolution grid
-
-%% remove the unreliable points and the associated triangles
-
-ind_unreliable = find(unreliable{2}(indI));% get the linear indices of unreliable 3D points
-imem = ismember(TRI(:),ind_unreliable); % find indices of references to unreliable points
-[ir,~] = ind2sub(size(TRI),find(imem)); % get the indices of rows with refs to unreliable points.
-TRI(ir,:) = []; % dispose them
-iused = unique(TRI(:)); % find the ind's of vertices that are in use
-used = zeros(length(pcl),1); % pre-allocate
-used(iused) = 1; % create a map of used vertices
-map2used = cumsum(used); % conversion table from indices of old vertices to the new one
-pcl = pcl(iused,:); % remove the unused vertices
-im_ml_vect = im_ml_vect(iused,:);
-TRI = map2used(TRI); % update the ind's of vertices
-
-%% create the 3D mesh
-
-TR = triangulation(TRI,double(pcl)); % create the object
-
-%% visualize
-figure(5), clf(5), hold on
-TM = trimesh(TR); % plot the mesh
-set(TM,'FaceVertexCData',im_ml_vect); % set colors to input image
-set(TM,'Facecolor','interp');
-% set(TM,'FaceColor','red'); % if you want a colored surface
-set(TM,'EdgeColor','none'); % suppress the edges
-xlabel('x (mm)')
-ylabel('y (mm)')
-zlabel('z (mm)')
-axis([-250 250 -250 250 400 900])
-set(gca,'xdir','reverse')
-set(gca,'zdir','reverse')
-daspect([1,1,1])
-axis tight
-%view([0,90]);
-
-%% Match
-
-% triangulateMultiview
 
 %% Functions
 
@@ -209,9 +197,12 @@ function [disparity_map] = create_disparity(im1,im2,disparity_range,plotting)
     uTH = 15;       %default 15
     tTH = 0.0000;   %default 0.0002 only applies if method is blockmatching
     dTH = 15;       %default []
+    
+    im1 = (rgb2gray(im1));
+    im2 = (rgb2gray(im2));
 
 %    disparity_map = disparity(rgb2gray(im1),rgb2gray(im2),'DisparityRange',disparity_range);
-    disparity_map = disparity(rgb2gray(im1),rgb2gray(im2),'DisparityRange',disparity_range,...
+    disparity_map = disparity(im1,im2,'DisparityRange',disparity_range,...
         'ContrastThreshold',cTH, 'UniquenessThreshold',uTH, 'DistanceThreshold',dTH,'BlockSize',bs);
     if plotting == true
         figure
