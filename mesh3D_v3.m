@@ -56,11 +56,14 @@ load im_nobg4
 % im_mr{2} = imfilter(im_mr{2},h);
 
 %% Disparity map
-disp_range = 16*[-35,-10];
-disparity_map{1} = create_disparity(im_lm{2},im_lm{1},disp_range,true);
 
-disp_range = 16*[10,35];
-disparity_map{2} = create_disparity(im_mr{1},im_mr{2},disp_range,true);
+disp_range{1} = 16*[-28,-15]; 
+%disp_range{1} = 16*[-35,-10];
+disparity_map{1} = create_disparity(im_lm{2},im_lm{1},disp_range{1},true);
+
+disp_range{2} = 16*[15,34];
+%disp_range{2} = 16*[10,35];
+disparity_map{2} = create_disparity(im_mr{1},im_mr{2},disp_range{2},true);
 
 %% Obtain unreliables
 unreliable{1} = (disparity_map{1}==-realmax('single')) | (1-(rgb2gray(im_lm{2})>0));
@@ -98,8 +101,6 @@ end
 %% Visualise stereographs
 mesh3d(disparity_map_pol{1},xyzPoints{1},im_lm{2},unreliable{1})
 mesh3d(disparity_map_pol{2},xyzPoints{2},im_mr{1},unreliable{2})
-
-%surfaceMeshFromPointCloudFromScratch(point_cloud_merge,im{2})
 
 %% Functions
 
@@ -168,6 +169,9 @@ function [point_cloud_merge,pc_rms_error] = merge_point_cloud(point_cloud,point_
     tform_pred.T(1:3, 1:3) =  stereoParams{2}.RotationOfCamera2 * stereoParams{1}.RotationOfCamera2;
     [tform,~,pc_rms_error] = pcregistericp(point_cloud_down{2},point_cloud_down{1},'Verbose',false,'InitialTransform', tform_pred);
     point_cloud_merge = pcmerge(point_cloud{1},pctransform(point_cloud{2},tform),10);
+    
+    point_cloud_merge = pointCloud(point_cloud_merge.Location(find(point_cloud_merge.Location(:, 3) < 550), :));
+    point_cloud_merge = pointCloud(point_cloud_merge.Location(find(point_cloud_merge.Location(:, 3) > 400), :));
     if plotting == true
         figure;
         pcshow(point_cloud_merge);
@@ -175,28 +179,6 @@ function [point_cloud_merge,pc_rms_error] = merge_point_cloud(point_cloud,point_
         title('Merged PC')
     end
 end
-
-% function [] = surfaceMeshFromPointCloudFromScratch(point_cloud, texture)
-%     % Create 2D Mesh
-%     
-%     coordinates = point_cloud.Location;
-%     xCoordinates = coordinates(:, 1);
-%     yCoordinates = coordinates(:, 2);
-%     zCoordinates = coordinates(:, 3);
-%     %     connectivityList = delaunay(double(xCoordinates), double(yCoordinates));
-% 
-%     %     trisurf(connectivityList, xCoordinates, yCoordinates, zCoordinates, 'FaceColor', 'interp', 'EdgeColor', 'none');
-% 
-% 
-%     F = scatteredInterpolant(double(xCoordinates), double(yCoordinates), double(zCoordinates), 'natural', 'nearest');
-%     x = linspace(min(xCoordinates), max(xCoordinates), 1024);
-%     y = linspace(min(yCoordinates), max(yCoordinates), 1024);
-%     [X, Y] = meshgrid(x, y);
-%     Z = F(double(X), double(Y));
-% 
-%     %     surf(X, Y, Z, 'EdgeColor', 'none', 'FaceLighting', 'gouraud');
-%     warp(X, Y, Z, texture);
-% end
 
 function [] = mesh3d(disparityMap,pc,J1,unreliable)
     % Matlab code for creating a 3D surface mesh
