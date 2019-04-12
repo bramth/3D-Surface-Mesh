@@ -58,46 +58,53 @@ load im_nobg4
 %% Disparity map
 disp_range = 16*[-35,-10];
 disparity_map{1} = create_disparity(im_lm{2},im_lm{1},disp_range,true);
-%disparity_map{1} = imgaussfilt(disparity_map{1},1);
-disparity_map{1} = medfilt2(disparity_map{1},[50,50]);
 
 disp_range = 16*[10,35];
 disparity_map{2} = create_disparity(im_mr{1},im_mr{2},disp_range,true);
-%disparity_map{2} = imgaussfilt(disparity_map{2},1);
-disparity_map{2} = medfilt2(disparity_map{2},[50,50]);
 
 %% Obtain unreliables
-
-% for i = 1:length(disparity_map)
-%     %unreliable{i} = (disparity_map{i}==-realmax('single')); %+ (pc_loc{i} == -inf) + (pc_loc{i} == inf))>0; %+ (pc_loc{i}(:,:,1)>250) + (pc_loc{i}(:,:,1)<-200) + (pc_loc{i}(:,:,2)>=175) + (pc_loc{i}(:,:,2)<=-180) + (pc_loc{i}(:,:,3)>=-410))>0;
-% end
-
 unreliable{1} = (disparity_map{1}==-realmax('single')) | (1-(rgb2gray(im_lm{2})>0));
 unreliable{2} = (disparity_map{2}==-realmax('single')) | (1-(rgb2gray(im_mr{1})>0));
 
-%unreliable{1} = unreliable{1} + (pc_loc{1} == -inf) + (pc_loc{1} == inf); %+ (pc_loc{1}(:,:,1)>173) + (pc_loc{1}(:,:,1)<-95) + (pc_loc{1}(:,:,2)>=165) + (pc_loc{1}(:,:,2)<=-170) + (pc_loc{1}(:,:,3)>=-400);
-%unreliable{2} = unreliable{2} + (pc_loc{2} == -inf) + (pc_loc{2} == inf); %+ (pc_loc{2}(:,:,1)>250) + (pc_loc{2}(:,:,1)<-200) + (pc_loc{2}(:,:,2)>=175) + (pc_loc{2}(:,:,2)<=-180) + (pc_loc{2}(:,:,3)>=-410);
-
-
 %% Polish disparity map
 
+% ... by filter map
+disparity_map_pol{1} = medfilt2(disparity_map{1});
+disparity_map_pol{2} = medfilt2(disparity_map{2});
+
+
+% ... by getting rid of unreliables
 for i = 1:length(disparity_map)
-    disparity_ref{i} = disparity_map{i}.*(1-unreliable{i}); 
+    disparity_map_pol{i} = disparity_map{i}.*(1-unreliable{i}); 
 end
 
-figure; imshow(disparity_ref{2},disp_range) 
+% ... by interpolating missing values
+disparity_map_pol{1}((disparity_map_pol{1}==0) & ((rgb2gray(im_lm{2}))>0)) = NaN;
+disparity_map_pol{2}((disparity_map_pol{2}==0) & ((rgb2gray(im_mr{1}))>0)) = NaN;
 
+disparity_map_pol{1}=fillmissing(disparity_map_pol{1},'nearest');
+disparity_map_pol{2}=fillmissing(disparity_map_pol{2},'nearest');
 
 %% Reconstruct face
 for i = 1:length(disparity_map)
-    point_cloud{i} = create_point_cloud(disparity_ref{i},stereoParams{i},true);
+    [point_cloud{i},point_cloud_down{i}] = create_point_cloud(disparity_map_pol{i},stereoParams{i},true);
     %point_cloud{i} = pcdenoise(point_cloud{i});
 end
 
 %% Combine both point-clouds
 
-%[~,point_cloud{2},pc_rms_error] = pcregistericp(point_cloud{2},point_cloud{1},'Verbose',true);
-%point_cloud_merge = pcmerge(point_cloud{1},point_cloud{2});
+[tform,~,pc_rms_error] = pcregistericp(point_cloud_down{2},point_cloud_down{1},'Verbose',true);
+point_cloud_merge = pcmerge(point_cloud{1},pctransform(point_cloud{2},tform),0.1);
+
+figure
+pcshow(point_cloud_merge)
+%view([180,90])
+title('pc merged')
+
+%% Vis
+mesh3d(disparity_map_pol{2},point_cloud{2}.Location,im_lm{2},unreliable{1})
+
+
 
 %% Obtain only location
  
@@ -111,7 +118,7 @@ end
 
 % 
 % %% create a connectivity structure
-% [M, N] = size(disparity_map{2}); % get image size
+% [M, N] = size(disparity_map_pol{2}); % get image size
 % res = 2; % resolution of mesh
 % [nI,mI] = meshgrid(1:res:N,1:res:M); % create a 2D meshgrid of pixels, thus defining a resolution grid
 % TRI = delaunay(nI(:),mI(:)); % create a triangle connectivity list
@@ -192,17 +199,15 @@ end
 
 function [disparity_map] = create_disparity(im1,im2,disparity_range,plotting)
 
-    bs = 15;        %defauld bs=15
-    cTH = 0.7;      %default 0.5
-    uTH = 15;       %default 15
-    tTH = 0.0000;   %default 0.0002 only applies if method is blockmatching
-    dTH = 15;       %default []
+    bs = 15;        %BlockSize              default 15
+    cTH = 0.7;      %ContrastThreshold      default 0.5
+    uTH = 15;       %UniquenessThreshold    default 15
+    dTH = 15;       %DistanceThreshold      default []
     
-    im1 = (rgb2gray(im1));
-    im2 = (rgb2gray(im2));
+    im1gr = (rgb2gray(im1));
+    im2gr = (rgb2gray(im2));
 
-%    disparity_map = disparity(rgb2gray(im1),rgb2gray(im2),'DisparityRange',disparity_range);
-    disparity_map = disparity(im1,im2,'DisparityRange',disparity_range,...
+    disparity_map = disparity(im1gr,im2gr,'DisparityRange',disparity_range,...
         'ContrastThreshold',cTH, 'UniquenessThreshold',uTH, 'DistanceThreshold',dTH,'BlockSize',bs);
     if plotting == true
         figure
@@ -211,20 +216,66 @@ function [disparity_map] = create_disparity(im1,im2,disparity_range,plotting)
     end
 end
 
-function [point_cloud] = create_point_cloud(disparity_map,stereoParams,plotting)
+function [point_cloud,point_cloud_down] = create_point_cloud(disparity_map,stereoParams,plotting)
     xyzPoints = reconstructScene(disparity_map,stereoParams);
     point_cloud = pointCloud(xyzPoints);
+    point_cloud = removeInvalidPoints(point_cloud);
+    point_cloud = pcdenoise(point_cloud,'Threshold',0.1);
+    point_cloud_down = pcdownsample(point_cloud,'gridAverage',10);
+
     if plotting == true
         figure;
         pcshow(xyzPoints);
     end
 end
+
+function [] = mesh3d(disparityMap,pc,J1,unreliable)
+    % Matlab code for creating a 3D surface mesh
     
-% function [D]=stereomatchingSSD(im1,im2,Dmax)
-%     d=[1:Dmax];
-%     for m=1:size(im1,2)
-%         for n=1:size(im1,1)
-%             D(n,m)=min(im1(n,m)-im2(max(1,n-d),m));
-%         end
-%     end
-% end
+    % create a connectivity structure
+    [M, N] = size(disparityMap); % get image size
+    res = 2; % resolution of mesh
+    [nI,mI] = meshgrid(1:res:N,1:res:M); % create a 2D meshgrid of pixels, thus defining a resolution grid
+    TRI = delaunay(nI(:),mI(:)); % create a triangle connectivity list
+    indI = sub2ind([M,N],mI(:),nI(:)); % cast grid points to linear indices
+    
+    % linearize the arrays and adapt to chosen resolution
+    %pcl = reshape(pc,N*M,3); % reshape to (N*M)x3
+    pcl = pc;
+    J1l = reshape(J1,N*M,3); % reshape to (N*M)x3
+    pcl = pcl(indI,:); % select 3D points that are on resolution grid
+    J1l = J1l(indI,:); % select pixels that are on the resolution grid
+    
+    % remove the unreliable points and the associated triangles
+    ind_unreliable = find(unreliable(indI));% get the linear indices of unreliable 3D points
+    imem = ismember(TRI(:),ind_unreliable); % find indices of references to unreliable points
+    [ir,~] = ind2sub(size(TRI),find(imem)); % get the indices of rows with refs to unreliable points.
+    TRI(ir,:) = []; % dispose them
+    iused = unique(TRI(:)); % find the ind's of vertices that are in use
+    used = zeros(length(pcl),1); % pre-allocate
+    used(iused) = 1; % create a map of used vertices
+    map2used = cumsum(used); % conversion table from indices of old vertices to the new one
+    pcl = pcl(iused,:); % remove the unused vertices
+    J1l = J1l(iused,:);
+    TRI = map2used(TRI); % update the ind's of vertices
+    
+    % create the 3D mesh
+    TR = triangulation(TRI,double(pcl)); % create the object
+    
+    % visualize
+    figure;
+    TM = trimesh(TR); % plot the mesh
+    set(TM,'FaceVertexCData',J1l); % set colors to input image
+    set(TM,'Facecolor','interp');
+    % set(TM,'FaceColor','red'); % if you want a colored surface
+    set(TM,'EdgeColor','none'); % suppress the edges
+    xlabel('x (mm)')
+    ylabel('y (mm)')
+    zlabel('z (mm)')
+    axis([-250 250 -250 250 400 900])
+    set(gca,'xdir','reverse')
+    set(gca,'zdir','reverse')
+    daspect([1,1,1])
+    axis tight
+    end
+    
