@@ -87,86 +87,19 @@ disparity_map_pol{2}=fillmissing(disparity_map_pol{2},'nearest');
 
 %% Reconstruct face
 for i = 1:length(disparity_map)
-    [point_cloud{i},point_cloud_down{i}] = create_point_cloud(disparity_map_pol{i},stereoParams{i},true);
-    %point_cloud{i} = pcdenoise(point_cloud{i});
+    [point_cloud{i},xyzPoints{i},point_cloud_down{i}] = create_point_cloud(disparity_map_pol{i},stereoParams{i},true);
 end
 
 %% Combine both point-clouds
 
-[tform,~,pc_rms_error] = pcregistericp(point_cloud_down{2},point_cloud_down{1},'Verbose',true);
-point_cloud_merge = pcmerge(point_cloud{1},pctransform(point_cloud{2},tform),0.1);
-
-figure
-pcshow(point_cloud_merge)
-%view([180,90])
-title('pc merged')
-
-%% Vis
-mesh3d(disparity_map_pol{2},point_cloud{2}.Location,im_lm{2},unreliable{1})
+[point_cloud_merge,pc_rms_error] = merge_point_cloud(point_cloud,point_cloud_down,stereoParams,true);
 
 
+%% Visualise stereographs
+mesh3d(disparity_map_pol{1},xyzPoints{1},im_lm{2},unreliable{1})
+mesh3d(disparity_map_pol{2},xyzPoints{2},im_mr{1},unreliable{2})
 
-%% Obtain only location
- 
-for i = 1:length(point_cloud)
-    pc_loc{i} = point_cloud{i}.Location;
-end
-
-%pc_merge_loc = point_cloud_merge.Location;
-
-%%%% FROM HERE COPY PASTE %%%%
-
-% 
-% %% create a connectivity structure
-% [M, N] = size(disparity_map_pol{2}); % get image size
-% res = 2; % resolution of mesh
-% [nI,mI] = meshgrid(1:res:N,1:res:M); % create a 2D meshgrid of pixels, thus defining a resolution grid
-% TRI = delaunay(nI(:),mI(:)); % create a triangle connectivity list
-% indI = sub2ind([M,N],mI(:),nI(:)); % cast grid points to linear indices
-% 
-% %% linearize the arrays and adapt to chosen resolution
-% 
-% %pcl = reshape(pc_merge_loc,N*M,3); % reshape to (N*M)x3
-% pcl = reshape(pc_loc{2},N*M,3); % reshape to (N*M)x3
-% im_ml_vect = reshape(im_mr{1},[N*M,3]); % reshape to (N*M)x3
-% pcl = pcl(indI,:); % select 3D points that are on resolution grid
-% im_ml_vect = im_ml_vect(indI,:); % select pixels that are on the resolution grid
-% 
-% %% remove the unreliable points and the associated triangles
-% 
-% ind_unreliable = find(unreliable{2}(indI));% get the linear indices of unreliable 3D points
-% imem = ismember(TRI(:),ind_unreliable); % find indices of references to unreliable points
-% [ir,~] = ind2sub(size(TRI),find(imem)); % get the indices of rows with refs to unreliable points.
-% TRI(ir,:) = []; % dispose them
-% iused = unique(TRI(:)); % find the ind's of vertices that are in use
-% used = zeros(length(pcl),1); % pre-allocate
-% used(iused) = 1; % create a map of used vertices
-% map2used = cumsum(used); % conversion table from indices of old vertices to the new one
-% pcl = pcl(iused,:); % remove the unused vertices
-% im_ml_vect = im_ml_vect(iused,:);
-% TRI = map2used(TRI); % update the ind's of vertices
-% 
-% %% create the 3D mesh
-% 
-% TR = triangulation(TRI,double(pcl)); % create the object
-% 
-% %% visualize
-% figure(5), clf(5), hold on
-% TM = trimesh(TR); % plot the mesh
-% set(TM,'FaceVertexCData',im_ml_vect); % set colors to input image
-% set(TM,'Facecolor','interp');
-% % set(TM,'FaceColor','red'); % if you want a colored surface
-% set(TM,'EdgeColor','none'); % suppress the edges
-% xlabel('x (mm)')
-% ylabel('y (mm)')
-% zlabel('z (mm)')
-% axis([-250 250 -250 250 400 900])
-% set(gca,'xdir','reverse')
-% set(gca,'zdir','reverse')
-% daspect([1,1,1])
-% axis tight
-% %view([0,90]);
-
+%surfaceMeshFromPointCloudFromScratch(point_cloud_merge,im{2})
 
 %% Functions
 
@@ -216,11 +149,11 @@ function [disparity_map] = create_disparity(im1,im2,disparity_range,plotting)
     end
 end
 
-function [point_cloud,point_cloud_down] = create_point_cloud(disparity_map,stereoParams,plotting)
+function [point_cloud,xyzPoints,point_cloud_down] = create_point_cloud(disparity_map,stereoParams,plotting)
     xyzPoints = reconstructScene(disparity_map,stereoParams);
     point_cloud = pointCloud(xyzPoints);
-    point_cloud = removeInvalidPoints(point_cloud);
-    point_cloud = pcdenoise(point_cloud,'Threshold',0.1);
+    %point_cloud = removeInvalidPoints(point_cloud);
+    %point_cloud = pcdenoise(point_cloud,'Threshold',0.1);
     point_cloud_down = pcdownsample(point_cloud,'gridAverage',10);
 
     if plotting == true
@@ -228,6 +161,42 @@ function [point_cloud,point_cloud_down] = create_point_cloud(disparity_map,stere
         pcshow(xyzPoints);
     end
 end
+
+function [point_cloud_merge,pc_rms_error] = merge_point_cloud(point_cloud,point_cloud_down,stereoParams,plotting)
+
+    tform_pred = affine3d();
+    tform_pred.T(1:3, 1:3) =  stereoParams{2}.RotationOfCamera2 * stereoParams{1}.RotationOfCamera2;
+    [tform,~,pc_rms_error] = pcregistericp(point_cloud_down{2},point_cloud_down{1},'Verbose',false,'InitialTransform', tform_pred);
+    point_cloud_merge = pcmerge(point_cloud{1},pctransform(point_cloud{2},tform),10);
+    if plotting == true
+        figure;
+        pcshow(point_cloud_merge);
+        view([0,-90])
+        title('Merged PC')
+    end
+end
+
+% function [] = surfaceMeshFromPointCloudFromScratch(point_cloud, texture)
+%     % Create 2D Mesh
+%     
+%     coordinates = point_cloud.Location;
+%     xCoordinates = coordinates(:, 1);
+%     yCoordinates = coordinates(:, 2);
+%     zCoordinates = coordinates(:, 3);
+%     %     connectivityList = delaunay(double(xCoordinates), double(yCoordinates));
+% 
+%     %     trisurf(connectivityList, xCoordinates, yCoordinates, zCoordinates, 'FaceColor', 'interp', 'EdgeColor', 'none');
+% 
+% 
+%     F = scatteredInterpolant(double(xCoordinates), double(yCoordinates), double(zCoordinates), 'natural', 'nearest');
+%     x = linspace(min(xCoordinates), max(xCoordinates), 1024);
+%     y = linspace(min(yCoordinates), max(yCoordinates), 1024);
+%     [X, Y] = meshgrid(x, y);
+%     Z = F(double(X), double(Y));
+% 
+%     %     surf(X, Y, Z, 'EdgeColor', 'none', 'FaceLighting', 'gouraud');
+%     warp(X, Y, Z, texture);
+% end
 
 function [] = mesh3d(disparityMap,pc,J1,unreliable)
     % Matlab code for creating a 3D surface mesh
@@ -240,8 +209,7 @@ function [] = mesh3d(disparityMap,pc,J1,unreliable)
     indI = sub2ind([M,N],mI(:),nI(:)); % cast grid points to linear indices
     
     % linearize the arrays and adapt to chosen resolution
-    %pcl = reshape(pc,N*M,3); % reshape to (N*M)x3
-    pcl = pc;
+    pcl = reshape(pc,N*M,3); % reshape to (N*M)x3
     J1l = reshape(J1,N*M,3); % reshape to (N*M)x3
     pcl = pcl(indI,:); % select 3D points that are on resolution grid
     J1l = J1l(indI,:); % select pixels that are on the resolution grid
