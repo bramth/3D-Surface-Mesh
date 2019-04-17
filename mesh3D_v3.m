@@ -101,6 +101,3 @@ end
 %% Visualise stereographs
 create_mesh(disparity_map_pol{1},xyzPoints{1},im_lm{2},unreliable{1})
 create_mesh(disparity_map_pol{2},xyzPoints{2},im_mr{1},unreliable{2})
-
-
-
